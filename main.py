@@ -15,7 +15,7 @@ os.environ["PATH"] = f"{ffmpeg_bin_path}{os.pathsep}{os.environ.get('PATH','')}"
 video_dir = os.environ["VIDEO_DIR"]
 video = os.path.join(video_dir, "vid2.mp4")
 
-# Capture Video
+# Load video
 cap = cv2.VideoCapture(video)
 
 # Get FPS from properties and calculate delay
@@ -31,6 +31,16 @@ model = whisper.load_model("base")
 # Transcribe and print the result
 result = model.transcribe(video, fp16=False)
 print(result)
+
+# Display video
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    cv2.imshow("Video", frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
 # Free resources and destroy windows
 cap.release()
