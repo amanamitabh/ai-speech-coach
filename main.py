@@ -2,6 +2,8 @@ import cv2
 import os
 import time
 import threading
+import sounddevice as sd
+import numpy as np
 import queue
 from dotenv import load_dotenv
 
@@ -24,7 +26,8 @@ audio_queue = queue.Queue(maxsize=30)
 # Thread safe signal flag
 STOP = threading.Event()
 
-# Video Capture Thread
+# VIDEO THREAD
+
 def video_capture():
     cap = cv2.VideoCapture(0)
 
@@ -45,11 +48,51 @@ def video_capture():
         except queue.Full:
             pass
 
-        # Display the frame
-        cv2.imshow("Video", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
     # Free allocated resources
     cap.release()
-    cv2.destroyAllWindows()
+
+
+# AUDIO THREAD
+
+def audio_callback(indata, frames, time, status):
+    timestamp = now()
+
+    # Enqueue the audio chunk if audio queue is empty, or else chunk is dropped
+    try:
+        audio_queue.put_nowait((timestamp, indata.copy()))
+        print(f"[AUDIO]: {timestamp:.6f}")
+    
+    except queue.Full:
+        pass
+
+
+def audio_capture():
+    with sd.InputStream(
+        samplerate=16000,
+        channels=1,
+        dtype=np.float32,
+        blocksize=800,
+        callback=audio_callback
+    ):
+        while not STOP.is_set():
+            time.sleep(0.01)
+
+
+# Separate threads for audio and video
+threads = [
+    threading.Thread(target=video_capture, daemon=True),
+    threading.Thread(target=audio_capture, daemon=True)
+]
+
+# Start each thread
+for thread in threads:
+    thread.start()
+
+
+# Loop to test program
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    STOP.set()
+    print("Exiting...")
