@@ -9,8 +9,8 @@ from faster_whisper import WhisperModel
 from dotenv import load_dotenv
 
 STT_MODEL_SIZE = "small"
-STT_DEVICE = "cpu"
-STT_COMPUTE_TYPE = "int8"
+STT_DEVICE = "cuda"
+STT_COMPUTE_TYPE = "float16"
 
 # Load the faster-whisper model
 whisper_model = WhisperModel(
@@ -116,7 +116,8 @@ def stt_consumer():
                 segments, info = whisper_model.transcribe(
                     audio_data.flatten(),
                     language="en",
-                    beam_size=1
+                    beam_size=1,
+                    vad_filter=True
                 )
 
                 for segment in segments:
