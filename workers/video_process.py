@@ -40,4 +40,5 @@ def run_video():
 
     cap.release()
 
-run_video()
+def video_pipeline():
+    pass
