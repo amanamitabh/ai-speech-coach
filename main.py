@@ -1,152 +1,73 @@
-import cv2
 import os
 import time
-import threading
-import sounddevice as sd
-import numpy as np
-import queue
-from faster_whisper import WhisperModel
 from dotenv import load_dotenv
-
-STT_MODEL_SIZE = "small"
-STT_DEVICE = "cuda"
-STT_COMPUTE_TYPE = "float16"
-
-# Load the faster-whisper model
-whisper_model = WhisperModel(
-    STT_MODEL_SIZE,
-    device=STT_DEVICE,
-    compute_type=STT_COMPUTE_TYPE
-)
+from multiprocessing import Process, Event
+from workers.video_process import video_pipeline
+from workers.audio_process import audio_pipeline
 
 
-def now():
-    # Get current time in global clock
-    return time.perf_counter()
+def check_process_health(processes, stop_event):
+
+    if stop_event.is_set():
+        return
+
+    # Check if processes die mid execution
+    for process in processes:
+        if not process.is_alive():
+            print(f"CRITICAL: {process.name} has stopped unexpectedly!")
+            raise Exception("Worker failure")
 
 
-# Adds variables from .env file to program environment variables
-load_dotenv()
-
-# Get ffmpeg binaries path and add it to PATH
-ffmpeg_bin_path = os.environ["FFMPEG_BIN_PATH"]
-os.environ["PATH"] = f"{ffmpeg_bin_path}{os.pathsep}{os.environ.get('PATH','')}"
-
-# Queues for processing audio and video
-video_queue = queue.Queue()
-audio_queue = queue.Queue()
-
-# Thread safe signal flag
-STOP = threading.Event()
-
-# VIDEO PRODUCER THREAD
-
-def video_capture():
-    cap = cv2.VideoCapture(0)
-
-    while not STOP.is_set():
-        ret, frame = cap.read()
-
-        if not ret:
-            continue
-
-        # Get current timestamp
-        timestamp = now()
-
-        # Enqueue the frame if video queue is empty, or else frame is dropped
-        try:
-            video_queue.put_nowait((timestamp, frame))
-            #print(f"[VIDEO]: {timestamp:.6f}")
-        
-        except queue.Full:
-            pass
-
-    # Free allocated resources
-    cap.release()
-
-
-# AUDIO PRODUCER THREAD
-
-def audio_callback(indata, frames, time, status):
-    timestamp = now()
-
-    # Enqueue the audio chunk if audio queue is empty, or else chunk is dropped
-    try:
-        audio_queue.put_nowait((timestamp, indata.copy()))
-        #print(f"[AUDIO]: {timestamp:.6f}")
+def initiate_shutdown(processes):
     
-    except queue.Full:
-        pass
+    # Wait for child processes to exit
+    for process in processes:
+        process.join(timeout=5.0)
+
+    # Forcefully terminate hanging processes
+    for process in processes:
+        if process.is_alive():
+            print(f"Force killing {process.name}")
+            process.terminate()
+            process.join()    
 
 
-def audio_capture():
-    with sd.InputStream(
-        samplerate=16000,
-        channels=1,
-        dtype=np.float32,
-        blocksize=1600,
-        callback=audio_callback
-    ):
-        while not STOP.is_set():
-            time.sleep(0.01)
+def main():
+        
+    # Adds variables from .env file to program environment variables
+    load_dotenv()
+
+    # Get ffmpeg binaries path and add it to PATH
+    ffmpeg_bin_path = os.environ["FFMPEG_BIN_PATH"]
+    os.environ["PATH"] = f"{ffmpeg_bin_path}{os.pathsep}{os.environ.get('PATH','')}"
+
+    # Global stop event for all processes
+    stop_event = Event()
+
+    # Separate processes for audio and video processing
+    print("Starting audio and video capture...")
+    processes = [
+        Process(target=video_pipeline, args=(stop_event,), name="VideoWorker"),
+        Process(target=audio_pipeline, args=(stop_event,), name="AudioWorker")
+    ]
+
+    # Spawn child processes
+    for process in processes:
+        process.start()
+
+    try:
+        while not stop_event.is_set():
+            time.sleep(1)
+            check_process_health(processes, stop_event)
 
 
-# AUDIO CONSUMER THREAD
+    except (KeyboardInterrupt, Exception) as e:
 
-def stt_consumer():
-    audio_buffer = []
-    BUFFER_DURATION = 1.5 # In Seconds
-    SAMPLE_RATE = 16000
-
-    while not STOP.is_set():
-        try:
-            # Dequeue the audio chunk and load it to audio buffer
-            timestamp, chunk = audio_queue.get(timeout=1)
-            audio_buffer.append((timestamp, chunk))    
-
-            # Convert buffered chunks to single numpy array
-            chunks = [c for _, c in audio_buffer]
-            audio_data = np.concatenate(chunks).astype(np.float32).flatten()
-            start_ts = audio_buffer[0][0]
-            end_ts = audio_buffer[-1][0]
-
-            duration = len(audio_data) / SAMPLE_RATE
-
-            if duration >= BUFFER_DURATION:
-                segments, info = whisper_model.transcribe(
-                    audio_data.flatten(),
-                    language="en",
-                    beam_size=1,
-                    vad_filter=True
-                )
-
-                for segment in segments:
-                        print(f"[STT {timestamp:.2f}] {segment.text}")
-
-                # Clear buffer
-                audio_buffer = []
-
-        except queue.Empty:
-            pass
+        # Set the stop event and signal shut down
+        print(f"Shutting down: {type(e).__name__}...")
+        stop_event.set()
+        initiate_shutdown(processes)
 
 
-# Separate threads for audio and video
-print("Starting audio and video capture...")
-threads = [
-    threading.Thread(target=video_capture, daemon=True),
-    threading.Thread(target=audio_capture, daemon=True),
-    threading.Thread(target=stt_consumer, daemon=True)
-]
-
-# Start each thread
-for thread in threads:
-    thread.start()
-
-
-# Loop to test program
-try:
-    while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    STOP.set()
-    print("Exiting...")
+if __name__ == "__main__":
+    main()
