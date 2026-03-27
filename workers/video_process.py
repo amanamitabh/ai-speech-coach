@@ -1,10 +1,16 @@
 import cv2
-import threading
+import time
+from multiprocessing import Queue
+from threading import Thread
+import queue
 
-def video_capture():
+def now():
+    return time.time()
+
+def video_capture(video_queue, stop_event):
     cap = cv2.VideoCapture(0)
 
-    while not STOP.is_set():
+    while not stop_event.is_set():
         ret, frame = cap.read()
 
         if not ret:
@@ -25,20 +31,42 @@ def video_capture():
     cap.release()
     
 
-def run_video():
-    cap = cv2.VideoCapture(0)
+def video_pipeline(stop_event):
+    
+    # Create multiprocessing safe queue for video frames
+    video_queue = Queue(maxsize=2)  # smaller maxsize for frame dropping on delay
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            continue
+    # Create threads for 
+    threads = [
+        Thread(target=video_capture, args=(video_queue, stop_event), daemon=True, name="FrameCaptureThread")
+    ]
 
-        cv2.imshow("Video", frame)
+    # Start threads
+    for thread in threads:
+        thread.start()
+    
+    try:
+        while not stop_event.is_set():
+        
+            try:
+                
+                # Get the frame and timestamp from video queue and display
+                timestamp, frame = video_queue.get(timeout=0.1)
+                cv2.imshow("Video Coach", frame)
 
-        if cv2.waitKey(1) == 27:
-            break
+                if cv2.waitKey(1) & 0xFF == 27: # End on ESC key
+                    stop_event.set()
+                    break
+            
+            except queue.Empty:
+                continue  
 
-    cap.release()
+    except KeyboardInterrupt:
+        pass    # Avoid printing traceback
 
-def video_pipeline():
-    pass
+    finally:
+        # Shutdown threads when stop event is received
+        print("Video Pipeline shutting down...")
+        cv2.destroyAllWindows()
+        for thread in threads:
+            thread.join(timeout=2.0)

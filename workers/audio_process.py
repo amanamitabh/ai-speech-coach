@@ -110,6 +110,10 @@ def audio_pipeline(stop_event):
 
     try:
         stop_event.wait()
+
+    except KeyboardInterrupt:
+        pass    # Avoid printing traceback
+    
     finally:
         # Shutdown threads when stop event is received from main process
         print("Audio Pipeline shutting down...")

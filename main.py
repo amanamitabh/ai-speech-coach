@@ -6,8 +6,12 @@ from workers.video_process import video_pipeline
 from workers.audio_process import audio_pipeline
 
 
-def check_process_health(processes):
+def check_process_health(processes, stop_event):
 
+    if stop_event.is_set():
+        return
+
+    # Check if processes die mid execution
     for process in processes:
         if not process.is_alive():
             print(f"CRITICAL: {process.name} has stopped unexpectedly!")
@@ -43,8 +47,8 @@ def main():
     # Separate processes for audio and video processing
     print("Starting audio and video capture...")
     processes = [
-        #Process(target=video_pipeline, args=(stop_event)),
-        Process(target=audio_pipeline, args=(stop_event,))
+        Process(target=video_pipeline, args=(stop_event,), name="VideoWorker"),
+        Process(target=audio_pipeline, args=(stop_event,), name="AudioWorker")
     ]
 
     # Spawn child processes
@@ -52,9 +56,9 @@ def main():
         process.start()
 
     try:
-        while True:
+        while not stop_event.is_set():
             time.sleep(1)
-            check_process_health(processes)
+            check_process_health(processes, stop_event)
 
 
     except (KeyboardInterrupt, Exception) as e:
