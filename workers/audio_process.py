@@ -45,7 +45,7 @@ def audio_capture(audio_queue, stop_event):
             time.sleep(0.01)
 
 
-def stt_consumer(audio_queue, stop_event):
+def stt_consumer(audio_queue, stop_event, transcript):
 
     # Load the faster whisper model
     whisper_model = WhisperModel(
@@ -93,7 +93,15 @@ def stt_consumer(audio_queue, stop_event):
                     segment_timestamp = start_ts + (segment.start + segment.end) / 2
                     metrics.add_words(word_count, segment_timestamp)
                     
+                    # Calculate instantaneous WPM
                     inst_wpm = metrics.get_wpm()
+
+                    # Add transcribed segment to full transcrioption
+                    transcript.append({
+                        "start": segment.start + start_ts,
+                        "end": segment.end + start_ts,
+                        "text": segment.text.strip()
+                        })
                     print(f"[STT {timestamp}] {segment.text} [{inst_wpm} WPM]")
 
                 # Clear buffer after transcription
@@ -107,11 +115,14 @@ def audio_pipeline(stop_event):
 
     # Create multiprocessing safe audio queue
     audio_queue = Queue(maxsize=100)
+    
+    # Store all the transcribed sentences
+    transcribed_lst = []
 
     # Separate threads for audio caprue and speech-to-text
     threads = [
         Thread(target=audio_capture, args=(audio_queue, stop_event), daemon=True),
-        Thread(target=stt_consumer, args=(audio_queue, stop_event), daemon=True)
+        Thread(target=stt_consumer, args=(audio_queue, stop_event, transcribed_lst), daemon=True)
     ]
 
     # Start threads
@@ -126,6 +137,10 @@ def audio_pipeline(stop_event):
     
     finally:
         # Shutdown threads when stop event is received from main process
+        raw_transcript = " ".join(segment["text"] for segment in transcribed_lst)
+
+        print("\n====FinalTranscript====")
+        print(raw_transcript)
         print("Audio Pipeline shutting down...")
         for thread in threads:
             thread.join(timeout=2.0)
