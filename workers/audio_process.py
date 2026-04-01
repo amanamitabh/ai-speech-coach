@@ -5,6 +5,7 @@ import numpy as np
 from faster_whisper import WhisperModel
 from multiprocessing import Queue
 from threading import Thread
+from workers.metrics import SpeechMetrics
 
 # Move these into config later
 STT_MODEL_SIZE = "small"
@@ -56,6 +57,8 @@ def stt_consumer(audio_queue, stop_event):
     # Debug statement (add to logging later)
     print(f"Model: {STT_MODEL_SIZE} loaded on {STT_DEVICE}")
 
+    
+    metrics = SpeechMetrics(window_size=5)
     audio_buffer = []
     BUFFER_DURATION = 1.5 # In Seconds
     SAMPLE_RATE = 16000
@@ -65,7 +68,7 @@ def stt_consumer(audio_queue, stop_event):
             # Dequeue the audio chunk and load it to audio buffer
             timestamp, chunk = audio_queue.get(timeout=1)
             audio_buffer.append((timestamp, chunk))    
-
+            
             # Convert buffered chunks to single numpy array
             chunks = [c for _, c in audio_buffer]
             audio_data = np.concatenate(chunks).astype(np.float32).flatten()
@@ -84,7 +87,14 @@ def stt_consumer(audio_queue, stop_event):
                 )
 
                 for segment in segments:
-                        print(f"[STT {timestamp}] {segment.text}")
+                    
+                    # Add word counts and midpoint timestamp to history
+                    word_count = len(segment.text.split())
+                    segment_timestamp = start_ts + (segment.start + segment.end) / 2
+                    metrics.add_words(word_count, segment_timestamp)
+                    
+                    inst_wpm = metrics.get_wpm()
+                    print(f"[STT {timestamp}] {segment.text} [{inst_wpm} WPM]")
 
                 # Clear buffer after transcription
                 audio_buffer = []
