@@ -10,30 +10,46 @@ MODEL = "gemma3:12b"
 def analyze_transcript(transcript):
 
     # Prompt LLM to refine raw transcript
-    prompt = f"""
+    prompt = """
         You are given a raw speech-to-text transcript. The transcript may contain errors such as misheard words, missing punctuation, incorrect grammar, or fragmented sentences.
 
-        Your task is to:
+        Your tasks are to:
         - Correct transcription errors based on context
-        - Some words might be transcribed incorrectly, so replace incorrect or misheard words with the most likely correct words
+        - Replace incorrect or misheard words with the most likely correct words
         - Fix grammar and sentence structure
         - Add proper punctuation
         - Keep the original meaning unchanged
 
+        Additionally:
+        - Identify filler words ONLY when they are used as fillers (not when they carry actual meaning in the sentence)
+        - Remove filler words from the cleaned transcript
+        - Count occurrences of each filler word
+
+        Filler words may include: um, uh, you know, like (only when used as a filler), i mean, kind of, sort of, basically, actually.
+
         IMPORTANT RULES:
         - Do NOT add new information
-        - Do NOT summarize or shorten
+        - Do NOT summarize or shorten content (except removing filler words)
         - Do NOT explain anything
-        - Output ONLY the corrected transcript
+        - Ensure "like" is only treated as a filler when it does not mean preference or comparison (e.g., "I like pizza" is NOT a filler)
+        - Output ONLY valid JSON in the following format:
 
-        Raw transcript:
-        {transcript}
+        {
+        "cleaned_text": "...",
+        "fillers": {
+            "um": 2,
+            "you know": 1
+        },
+        "total_fillers": 3
+        }
+
+        Raw transcript:\n
     """
 
     # Data sent to Ollama API
     data = {
         "model": MODEL,
-        "prompt": prompt,
+        "prompt": prompt + transcript,
         "options": {
             "keep_alive": 0 # unload model from memory after transcription
         },

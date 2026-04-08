@@ -5,6 +5,7 @@ from multiprocessing import Process, Event, Queue
 from workers.video_process import video_pipeline
 from workers.audio_process import audio_pipeline
 from workers.llm_speech_analyzer import analyze_transcript
+from utils.json_parser import parse_llm_output
 
 
 def check_process_health(processes, stop_event):
@@ -94,11 +95,18 @@ def main():
         # Shutdown all processes
         initiate_shutdown(processes)
 
+        # Parse data from the LLM
+        llm_output = analyze_transcript(raw_transcript)
+        data = parse_llm_output(llm_output)
+        refined_transcript = data.get("cleaned_text")
+        filler_words = data.get("fillers")
+        filler_count = data.get("total_fillers")
+
         # Print transcripts
-        print(f"Raw transcript: {raw_transcript}")
-        refined_transcript = analyze_transcript(raw_transcript)
-        print("\nRefined Transcript:")
-        print(refined_transcript)
+        print(f"\nRaw transcript: {raw_transcript}")
+        print(f"\nRefined Transcript: {refined_transcript}")
+        print(f"\nFiller Words: {filler_words}")
+        print(f"\nFiller Word Count: {filler_count}")
 
 if __name__ == "__main__":
     main()
