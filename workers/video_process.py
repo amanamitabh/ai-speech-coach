@@ -1,8 +1,10 @@
 import cv2
+import queue
 import time
 from multiprocessing import Queue
 from threading import Thread
-import queue
+from workers import gaze_estimation
+from workers.gaze_estimation import GazeEstimator
 
 def now():
     return time.time()
@@ -31,6 +33,17 @@ def video_capture(video_queue, stop_event):
     cap.release()
     
 
+def frame_generator(video_queue, stop_event):
+    """Generator for calibrating eye gaze on initialization"""
+    while not stop_event.is_set():
+        try:
+            # Send frame to caller and save state of generator
+            _, frame = video_queue.get(timeout=0.1)
+            yield frame 
+        except queue.Empty:
+            continue
+
+
 def video_pipeline(stop_event):
     
     # Create multiprocessing safe queue for video frames
@@ -45,22 +58,41 @@ def video_pipeline(stop_event):
     for thread in threads:
         thread.start()
     
+    # Create gaze estimator object
+    gaze_estimator = GazeEstimator()
+    
+    # Calibrate eye gaze
+    print("Calibrating gaze... look straight")
+    gaze_estimator.calibrate(
+        frame_generator(video_queue, stop_event)
+    )
+    print("Calibration done")
+
     try:
         while not stop_event.is_set():
         
             try:
-                
-                # Get the frame and timestamp from video queue and display
+                # Get the frame and timestamp from video queue
                 timestamp, frame = video_queue.get(timeout=0.1)
-                cv2.imshow("Video Coach", frame)
-
-                if cv2.waitKey(1) & 0xFF == 27: # End on ESC key
-                    stop_event.set()
-                    break
             
             except queue.Empty:
                 continue  
+            
+            # Process frame to estimate gaze
+            frame, gaze, alert = gaze_estimator.process(frame)
 
+            # Overlay over UI
+            if alert:
+                cv2.putText(frame, alert, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
+            cv2.putText(frame, f"Gaze: {gaze}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+            # Display frame and overlayed text
+            cv2.imshow("Video Coach", frame)
+
+            if cv2.waitKey(1) & 0xFF == 27: # End on ESC key
+                stop_event.set()
+                break
+            
     except KeyboardInterrupt:
         pass    # Avoid printing traceback
 
