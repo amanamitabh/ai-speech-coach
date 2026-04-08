@@ -111,7 +111,7 @@ def stt_consumer(audio_queue, stop_event, transcript):
             pass
 
 
-def audio_pipeline(stop_event):
+def audio_pipeline(stop_event, transcript_queue):
 
     # Create multiprocessing safe audio queue
     audio_queue = Queue(maxsize=100)
@@ -139,8 +139,11 @@ def audio_pipeline(stop_event):
         # Shutdown threads when stop event is received from main process
         raw_transcript = " ".join(segment["text"] for segment in transcribed_lst)
 
-        print("\n====FinalTranscript====")
-        print(raw_transcript)
-        print("Audio Pipeline shutting down...")
+        try:
+            transcript_queue.put(raw_transcript)
+        except Exception as e:
+            print("Failed to send transcript:", e)
+
+        # Terminate threads in audio process
         for thread in threads:
             thread.join(timeout=2.0)
