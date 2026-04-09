@@ -6,6 +6,7 @@ from faster_whisper import WhisperModel
 from multiprocessing import Queue
 from threading import Thread
 from workers.metrics import SpeechMetrics
+from utils.esp32_feedback import triggerBuzzer
 
 # Move these into config later
 STT_MODEL_SIZE = "small"
@@ -45,7 +46,7 @@ def audio_capture(audio_queue, stop_event):
             time.sleep(0.01)
 
 
-def stt_consumer(audio_queue, stop_event, transcript):
+def stt_consumer(audio_queue, stop_event, transcript, speech_queue):
 
     # Load the faster whisper model
     whisper_model = WhisperModel(
@@ -96,6 +97,17 @@ def stt_consumer(audio_queue, stop_event, transcript):
                     # Calculate instantaneous WPM
                     inst_wpm = metrics.get_wpm()
 
+                    # Trigger auditory feedback if wpm too low
+                    if inst_wpm < 80:
+                        triggerBuzzer()
+
+                    # Add wpm and filler density in multiprocessing queue
+                    if speech_queue:
+                        try:
+                            speech_queue.put_nowait((now(), inst_wpm))
+                        except queue.Full:
+                            pass
+
                     # Add transcribed segment to full transcrioption
                     transcript.append({
                         "start": segment.start + start_ts,
@@ -111,7 +123,7 @@ def stt_consumer(audio_queue, stop_event, transcript):
             pass
 
 
-def audio_pipeline(stop_event, transcript_queue):
+def audio_pipeline(stop_event, transcript_queue, speech_queue):
 
     # Create multiprocessing safe audio queue
     audio_queue = Queue(maxsize=100)
@@ -122,7 +134,7 @@ def audio_pipeline(stop_event, transcript_queue):
     # Separate threads for audio caprue and speech-to-text
     threads = [
         Thread(target=audio_capture, args=(audio_queue, stop_event), daemon=True),
-        Thread(target=stt_consumer, args=(audio_queue, stop_event, transcribed_lst), daemon=True)
+        Thread(target=stt_consumer, args=(audio_queue, stop_event, transcribed_lst, speech_queue), daemon=True)
     ]
 
     # Start threads

@@ -116,4 +116,14 @@ class GazeEstimator:
             else:
                 self.down_start = None
 
-        return frame, gaze, alert
+
+            # Calculate eye contact score
+            if self.center_h is not None and self.center_v is not None:
+                dev_h = abs(smooth_h - self.center_h)
+                dev_v = abs(smooth_v - self.center_v)
+                deviation = dev_h + dev_v
+            
+            # Convert deviation to a score, smaller the deviation the better
+            eye_score = max(0, 1 - deviation * 8) * 100
+
+        return frame, gaze, alert, eye_score

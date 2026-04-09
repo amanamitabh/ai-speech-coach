@@ -3,7 +3,6 @@ import queue
 import time
 from multiprocessing import Queue
 from threading import Thread
-from workers import gaze_estimation
 from workers.gaze_estimation import GazeEstimator
 
 def now():
@@ -44,7 +43,7 @@ def frame_generator(video_queue, stop_event):
             continue
 
 
-def video_pipeline(stop_event):
+def video_pipeline(stop_event, gaze_queue):
     
     # Create multiprocessing safe queue for video frames
     video_queue = Queue(maxsize=2)  # smaller maxsize for frame dropping on delay
@@ -79,7 +78,10 @@ def video_pipeline(stop_event):
                 continue  
             
             # Process frame to estimate gaze
-            frame, gaze, alert = gaze_estimator.process(frame)
+            frame, gaze, alert, eye_score = gaze_estimator.process(frame)
+
+            # Add eye score to the queue
+            gaze_queue.put((now(), eye_score))
 
             # Overlay over UI
             if alert:
@@ -92,7 +94,7 @@ def video_pipeline(stop_event):
             if cv2.waitKey(1) & 0xFF == 27: # End on ESC key
                 stop_event.set()
                 break
-            
+
     except KeyboardInterrupt:
         pass    # Avoid printing traceback
 

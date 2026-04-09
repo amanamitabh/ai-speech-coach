@@ -3,9 +3,10 @@ from collections import deque
 class SpeechMetrics:
     def __init__(self, window_size=5, smoothing=0.2):
         self.window_size = window_size
-        self.buckets = deque()   # stored as (second, word_count)
-        self.smoothed_wpm = 0
         self.alpha = smoothing   # smoothing factor
+        self.smoothed_wpm = 0
+        self.buckets = deque()   # stored as (second, word_count)
+
 
     def add_words(self, word_count, timestamp):
         sec = int(timestamp)

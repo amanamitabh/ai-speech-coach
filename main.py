@@ -5,6 +5,7 @@ from multiprocessing import Process, Event, Queue
 from workers.video_process import video_pipeline
 from workers.audio_process import audio_pipeline
 from workers.llm_speech_analyzer import analyze_transcript
+from workers.engagement_tracker import EngagementTracker
 from utils.json_parser import parse_llm_output
 
 
@@ -50,11 +51,18 @@ def main():
     transcript_queue = Queue()
     raw_transcript = ""
 
+    # Create instance of engagement tracker
+    tracker = EngagementTracker()
+
+    # Queues for gaze and wpm
+    gaze_queue = Queue()
+    speech_queue = Queue()
+
     # Separate processes for audio and video processing
     print("Starting audio and video capture...")
     processes = [
-        Process(target=video_pipeline, args=(stop_event,), name="VideoWorker"),
-        Process(target=audio_pipeline, args=(stop_event, transcript_queue), name="AudioWorker")
+        Process(target=video_pipeline, args=(stop_event, gaze_queue), name="VideoWorker"),
+        Process(target=audio_pipeline, args=(stop_event, transcript_queue, speech_queue), name="AudioWorker")
     ]
 
     # Spawn child processes
