@@ -13,11 +13,5 @@ def get_serial_connection():
 
 def triggerBuzzer():
     with get_serial_connection() as esp:
-        esp.write(b'A') # Send 'A' serially
-        time.sleep(1)
-
-
-def triggerVibration():
-    with get_serial_connection() as esp:
-        esp.write(b'H') # Send 'H' serially
+        esp.write(b'W') # Send 'W' serially
         time.sleep(1)
